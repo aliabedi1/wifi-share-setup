@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config_dir=/etc/wifi-share
+run_dir=/run/wifi-share
+upstream=wlp2s0
+ap=ap0
+subnet=10.42.7.0/24
+address=10.42.7.1/24
+
+require_root() {
+  if (( EUID != 0 )); then
+    echo 'Administrator access required.' >&2
+    exit 1
+  fi
+}
+
+write_ap_config() {
+  local channel band password
+  channel=$(iw dev "$upstream" info | awk '/channel [0-9]+/{print $2; exit}')
+  if [[ ! "$channel" =~ ^[0-9]+$ ]]; then
+    echo 'Could not read the current Wi-Fi channel.' >&2
+    exit 1
+  fi
+  if (( channel <= 14 )); then band=g; else band=a; fi
+  password=$(cat "$config_dir/password")
+  mkdir -p "$run_dir"
+  chmod 700 "$run_dir"
+  umask 077
+  {
+    printf 'interface=%s\n' "$ap"
+    printf 'driver=nl80211\n'
+    printf 'ssid=1li-pc\n'
+    printf 'hw_mode=%s\n' "$band"
+    printf 'channel=%s\n' "$channel"
+    printf 'wpa=2\n'
+    printf 'wpa_key_mgmt=WPA-PSK\n'
+    printf 'rsn_pairwise=CCMP\n'
+    printf 'wpa_passphrase=%s\n' "$password"
+  } > "$run_dir/hostapd.conf"
+  unset password
+}
+
+start_share() {
+  if systemctl is-active --quiet wifi-share-ap.service; then
+    echo 'Hotspot is already on.'
+    return
+  fi
+  if ! nmcli -t -f DEVICE,STATE device status | grep -qx "$upstream:connected"; then
+    echo 'Connect to Wi-Fi first.' >&2
+    exit 1
+  fi
+  if ! iw dev "$ap" info >/dev/null 2>&1; then
+    iw dev "$upstream" interface add "$ap" type __ap
+  fi
+  nmcli device set "$ap" managed no
+  ip link set "$ap" down
+  iw dev "$ap" set type __ap
+  ip addr replace "$address" dev "$ap"
+  ip link set "$ap" up
+  write_ap_config
+  systemctl start wifi-share-ap.service
+  systemctl start wifi-share-dhcp.service
+  sysctl -w net.ipv4.ip_forward=1 >/dev/null
+  iptables -t nat -C POSTROUTING -s "$subnet" -o "$upstream" -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s "$subnet" -o "$upstream" -j MASQUERADE
+  echo 'Hotspot on: 1li-pc'
+}
+
+stop_share() {
+  systemctl stop wifi-share-dhcp.service wifi-share-ap.service || true
+  while iptables -t nat -C POSTROUTING -s "$subnet" -o "$upstream" -j MASQUERADE 2>/dev/null; do
+    iptables -t nat -D POSTROUTING -s "$subnet" -o "$upstream" -j MASQUERADE
+  done
+  ip addr del "$address" dev "$ap" 2>/dev/null || true
+  echo 'Hotspot off.'
+}
+
+set_password() {
+  local password
+  IFS= read -r password
+  if (( ${#password} < 8 || ${#password} > 63 )) || [[ "$password" == *$'\n'* ]]; then
+    echo 'Password must have 8-63 characters.' >&2
+    exit 1
+  fi
+  mkdir -p "$config_dir"
+  chmod 700 "$config_dir"
+  umask 077
+  printf '%s\n' "$password" > "$config_dir/password.new"
+  mv "$config_dir/password.new" "$config_dir/password"
+  unset password
+  if systemctl is-active --quiet wifi-share-ap.service; then
+    write_ap_config
+    systemctl restart wifi-share-ap.service
+  fi
+  echo 'Hotspot password updated.'
+}
+
+require_root
+case "${1:-}" in
+  on) start_share ;;
+  off) stop_share ;;
+  set-password) set_password ;;
+  generate-password)
+    password=$(openssl rand -hex 12)
+    printf '%s\n' "$password" | "$0" set-password
+    printf 'New password: %s\n' "$password"
+    ;;
+  *) echo 'Invalid command.' >&2; exit 2 ;;
+esac

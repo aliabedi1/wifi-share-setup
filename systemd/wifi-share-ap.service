@@ -1,0 +1,8 @@
+[Unit]
+Description=Wi-Fi sharing access point
+After=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/hostapd /run/wifi-share/hostapd.conf
+Restart=on-failure

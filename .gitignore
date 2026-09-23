@@ -1,0 +1,5 @@
+# Local secrets and runtime state must never be committed.
+password
+hostapd.conf
+*.key
+*.pem

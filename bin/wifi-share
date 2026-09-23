@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  on|off)
+    exec pkexec /usr/local/libexec/wifi-share-root "$1"
+    ;;
+  status)
+    if systemctl is-active --quiet wifi-share-ap.service && systemctl is-active --quiet wifi-share-dhcp.service; then
+      printf 'Hotspot on: 1li-pc\n'
+    else
+      printf 'Hotspot off\n'
+    fi
+    ;;
+  password)
+    if [[ "${2:-}" == --generate ]]; then
+      exec pkexec /usr/local/libexec/wifi-share-root generate-password
+    fi
+    if [[ -n "${2:-}" ]]; then
+      printf 'Usage: wifi-share password [--generate]\n' >&2
+      exit 2
+    fi
+    read -r -s -p 'New hotspot password (8-63 characters): ' first
+    printf '\n'
+    read -r -s -p 'Repeat password: ' second
+    printf '\n'
+    if [[ "$first" != "$second" ]]; then
+      printf 'Passwords did not match.\n' >&2
+      exit 1
+    fi
+    printf '%s\n' "$first" | pkexec /usr/local/libexec/wifi-share-root set-password
+    ;;
+  *)
+    printf 'Usage: wifi-share {on|off|status|password [--generate]}\n' >&2
+    exit 2
+    ;;
+esac

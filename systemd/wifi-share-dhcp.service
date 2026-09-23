@@ -1,0 +1,9 @@
+[Unit]
+Description=Wi-Fi sharing DHCP and DNS
+After=wifi-share-ap.service
+Requires=wifi-share-ap.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq --no-daemon --interface=ap0 --bind-interfaces --dhcp-range=10.42.7.10,10.42.7.200,12h --dhcp-option=option:router,10.42.7.1 --dhcp-option=option:dns-server,10.42.7.1
+Restart=on-failure
