@@ -58,10 +58,11 @@ The setup sequence was:
 - The laptop reached its Wi-Fi gateway and an external site.
 - `wifi-share off` followed by `wifi-share on` worked, and password generation restarted the AP successfully.
 - After a client reported “no internet,” a temporary network-namespace client could not reach `1.1.1.1`. The `FORWARD` chain had policy `DROP`; NAT alone did not permit forwarding. Adding outbound and established-return rules made the same probe pass (3 of 3 ping replies). Those rules are now part of `wifi-share on` and are removed by `wifi-share off`.
+- After the fix, a connected client at `10.42.7.165` exchanged TCP traffic with an external HTTPS server, including a successful TCP handshake and responses from the server.
 
 The forwarding regression check is repeatable with `sudo ./tests/forwarding.sh` while the hotspot is on. It creates a temporary network namespace, tests the same routed path, and removes the namespace afterward. It still depends on the upstream internet connection being available.
 
-No second device was connected during verification, so client-side connectivity was not directly measured.
+The original setup was tested without a client. The later forwarding fix was verified with both the temporary client and live traffic from a connected device.
 
 ## Reinstall on this Ubuntu laptop
 
