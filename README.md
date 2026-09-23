@@ -30,7 +30,7 @@ sudo cat /etc/wifi-share/password
 - Added `/usr/local/bin/wifi-share` as the user command and `/usr/local/libexec/wifi-share-root` for privileged operations.
 - Added `wifi-share-ap.service` and `wifi-share-dhcp.service`. They run only after `wifi-share on`.
 - Used `10.42.7.1/24` for the hotspot. DHCP leases are `10.42.7.10` through `10.42.7.200`.
-- Enabled IPv4 forwarding and added an iptables masquerade rule from `10.42.7.0/24` out through `wlp2s0` while the hotspot is on. `wifi-share off` removes that masquerade rule and the hotspot address. It leaves the kernel forwarding setting enabled because other local services may need it.
+- Enabled IPv4 forwarding and added iptables rules to allow hotspot traffic through the `FORWARD` chain and masquerade it out through `wlp2s0` while the hotspot is on. `wifi-share off` removes those rules and the hotspot address. It leaves the kernel forwarding setting enabled because other local services may need it.
 - Added UFW rules for DHCP, DNS, and forwarding from `ap0` to `wlp2s0`. UFW was inactive when the setup was completed; the rules will apply if it is later enabled.
 - Kept NetworkManager off `ap0` so `hostapd` can control it. NetworkManager still controls the upstream `wlp2s0` connection.
 - Generated a separate 24-character hexadecimal password for the final hotspot. The old NetworkManager `Hotspot` profile was left in place but is **not used** by this setup. An intermediate `Shared-WiFi` profile was deleted.
@@ -57,6 +57,9 @@ The setup sequence was:
 - `nslookup example.com 10.42.7.1` resolved through the hotspot DNS service.
 - The laptop reached its Wi-Fi gateway and an external site.
 - `wifi-share off` followed by `wifi-share on` worked, and password generation restarted the AP successfully.
+- After a client reported “no internet,” a temporary network-namespace client could not reach `1.1.1.1`. The `FORWARD` chain had policy `DROP`; NAT alone did not permit forwarding. Adding outbound and established-return rules made the same probe pass (3 of 3 ping replies). Those rules are now part of `wifi-share on` and are removed by `wifi-share off`.
+
+The forwarding regression check is repeatable with `sudo ./tests/forwarding.sh` while the hotspot is on. It creates a temporary network namespace, tests the same routed path, and removes the namespace afterward. It still depends on the upstream internet connection being available.
 
 No second device was connected during verification, so client-side connectivity was not directly measured.
 
